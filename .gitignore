@@ -1,8 +1,10 @@
 node_modules/
-dist/
 .env
 .env.*
 !.env.example
-uploads/
-.DS_Store
+dist/
+coverage/
+backend/uploads/
 *.log
+.DS_Store
+.vscode/

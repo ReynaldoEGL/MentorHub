@@ -1,6 +1,20 @@
-import express from 'express';
-const app = express();
-app.use(express.json());
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'MentorHub API', version: '1.0.0' }));
-const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`MentorHub API listening on ${port}`));
+import app from './app.js';
+import { env } from './config/env.js';
+import { pool } from './db/pool.js';
+
+try {
+  await pool.query('SELECT 1');
+  const server = app.listen(env.port, () => console.log(`MentorHub API escuchando en el puerto ${env.port}`));
+
+  const shutdown = async () => {
+    server.close(async () => {
+      await pool.end();
+      process.exit(0);
+    });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+} catch (error) {
+  console.error('No fue posible iniciar la API:', error.message);
+  process.exit(1);
+}
