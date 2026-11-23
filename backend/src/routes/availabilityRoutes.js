@@ -1,0 +1,9 @@
+import { Router } from 'express';
+import { requireRole } from '../middleware/auth.js';
+import { createAvailability, deleteAvailability, listMyAvailability, listMentorAvailability } from '../controllers/availabilityController.js';
+const router = Router();
+router.get('/mia', requireRole('mentor'), listMyAvailability);
+router.post('/', requireRole('mentor'), createAvailability);
+router.delete('/:id', requireRole('mentor'), deleteAvailability);
+router.get('/mentor/:mentorId', listMentorAvailability);
+export default router;

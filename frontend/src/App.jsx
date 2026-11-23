@@ -6,6 +6,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import MentorsPage from './pages/MentorsPage';
+import AvailabilityPage from './pages/AvailabilityPage';
+import AppointmentsPage from './pages/AppointmentsPage';
 import './styles.css';
 
 export default function App() {
@@ -16,6 +18,8 @@ export default function App() {
     <Route element={<ProtectedRoute />}><Route path="/app" element={<Layout />}>
       <Route index element={<DashboardPage />} />
       <Route element={<ProtectedRoute roles={['mentorado']} />}><Route path="mentores" element={<MentorsPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['mentor']} />}><Route path="disponibilidad" element={<AvailabilityPage />} /></Route>
+      <Route path="citas" element={<AppointmentsPage />} />
     </Route></Route>
     <Route path="*" element={<Navigate to="/app" replace />} />
   </Routes></AuthProvider></BrowserRouter>;

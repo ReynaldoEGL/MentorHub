@@ -5,6 +5,8 @@ import { pool } from '../db/pool.js';
 import { register, login, me, forgotPassword, resetPassword } from '../controllers/authController.js';
 import { updateOwnProfile, listUsers, changeUserRole, setUserActive } from '../controllers/usersController.js';
 import { listMentors, getMentor, updateMentorProfile } from '../controllers/mentorsController.js';
+import availabilityRoutes from './availabilityRoutes.js';
+import appointmentRoutes from './appointmentRoutes.js';
 
 const router = Router();
 
@@ -17,6 +19,8 @@ router.patch('/users/me', authenticate, updateOwnProfile);
 router.get('/mentores', authenticate, listMentors);
 router.get('/mentores/:id', authenticate, getMentor);
 router.put('/mentores/me/perfil', authenticate, requireRole('mentor'), updateMentorProfile);
+router.use('/disponibilidad', authenticate, availabilityRoutes);
+router.use('/citas', authenticate, appointmentRoutes);
 router.get('/admin/usuarios', authenticate, requireRole('admin'), listUsers);
 router.patch('/admin/usuarios/:id/rol', authenticate, requireRole('admin'), changeUserRole);
 router.patch('/admin/usuarios/:id/activo', authenticate, requireRole('admin'), setUserActive);
