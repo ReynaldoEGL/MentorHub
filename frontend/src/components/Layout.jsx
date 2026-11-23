@@ -1,12 +1,20 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { Bell, CalendarDays, GraduationCap, LayoutDashboard, LogOut, Search, Settings, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 
 const roleLabels = { admin: 'Administrador', mentor: 'Mentor', mentorado: 'Mentorado' };
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    api.get('/notificaciones').then(({ data }) => { setNotifications(data.notifications); setUnread(data.unread); }).catch(() => {});
+  }, []);
   const links = [
     { to: '/app', label: 'Resumen', icon: LayoutDashboard, end: true },
     ...(user?.role === 'mentorado' ? [{ to: '/app/mentores', label: 'Buscar mentores', icon: Search }] : []),
@@ -15,6 +23,15 @@ export default function Layout() {
     { to: '/app/documentos', label: 'Documentos', icon: Bell },
     ...(user?.role === 'admin' ? [{ to: '/app/admin', label: 'Administración', icon: Settings }] : []),
   ];
+
+  const openNotification = async (item) => {
+    try { await api.patch(`/notificaciones/${item.id}/leer`); } catch {}
+    setNotifications((old) => old.map((notice) => notice.id === item.id ? { ...notice, is_read: true } : notice));
+    setUnread((count) => Math.max(0, count - (item.is_read ? 0 : 1)));
+    setNotificationsOpen(false);
+    if (item.resource_type === 'appointment' || item.resource_type === 'evidence') navigate(`/app/citas/${item.resource_id}`);
+    else if (item.resource_type === 'document_request') navigate('/app/documentos');
+  };
 
   const handleLogout = () => {
     logout();
@@ -39,7 +56,7 @@ export default function Layout() {
         </div>
       </aside>
       <main className="main-area">
-        <header className="topbar"><div><span className="topbar-kicker">PLATAFORMA ACADÉMICA</span><strong>Tu espacio de mentoría</strong></div><div className="topbar-user"><span>{user?.full_name}</span><div className="avatar avatar-small">{user?.full_name?.slice(0, 1).toUpperCase()}</div></div></header>
+        <header className="topbar"><div><span className="topbar-kicker">PLATAFORMA ACADÉMICA</span><strong>Tu espacio de mentoría</strong></div><div className="topbar-user"><div className="notification-wrap"><button className="notification-button" onClick={() => setNotificationsOpen((open) => !open)} aria-label="Notificaciones"><Bell size={18}/>{unread > 0 && <span className="notification-dot">{unread > 9 ? '9+' : unread}</span>}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-head"><strong>Notificaciones</strong><button onClick={async () => { await api.patch('/notificaciones/leer-todas'); setNotifications((old) => old.map((item) => ({ ...item, is_read: true }))); setUnread(0); }}>Marcar leídas</button></div>{notifications.slice(0, 8).map((item) => <button key={item.id} className={`notification-item ${item.is_read ? '' : 'unread'}`} onClick={() => openNotification(item)}><span>{item.message}</span><small>{new Date(item.created_at).toLocaleString('es-MX')}</small></button>)}{!notifications.length && <p className="empty-state">Todavía no tienes notificaciones.</p>}</div>}</div><span>{user?.full_name}</span><div className="avatar avatar-small">{user?.full_name?.slice(0, 1).toUpperCase()}</div></div></header>
         <div className="page-content"><Outlet /></div>
       </main>
     </div>
