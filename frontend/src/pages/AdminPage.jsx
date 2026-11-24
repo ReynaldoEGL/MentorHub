@@ -108,12 +108,23 @@ export default function AdminPage() {
 
     <section className="panel table-panel"><div className="table-toolbar"><div className="panel-title"><h2><Users size={17}/> Cuentas y roles</h2></div>
       <div className="admin-search"><Search size={15}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar nombre o correo"/></div></div>
+      <p className="hint" style={{ margin: '6px 0 15px' }}>
+        Por seguridad, los roles de administrador están protegidos: nadie puede retirarlos ni desactivar esas cuentas desde el panel.
+      </p>
       <div className="table-scroll"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
         {users.map((item) => <tr key={item.id}><td><strong>{item.full_name}</strong><span className="table-sub">Alta: {new Date(item.created_at).toLocaleDateString('es-MX')}</span></td>
-          <td>{item.email}</td><td><select className="role-select" value={item.role} disabled={busyId === item.id} onChange={(e) => changeRole(item.id, e.target.value)}>
-            {Object.entries(roles).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select></td><td><span className={`status ${item.is_active ? 'status-realizada' : 'status-cancelada'}`}>{item.is_active ? 'Activo' : 'Inactivo'}</span></td>
-          <td><button className={`button button-small ${item.is_active ? 'button-outline-danger' : 'button-primary'}`} disabled={busyId === item.id} onClick={() => toggleActive(item)}>{item.is_active ? 'Desactivar' : 'Activar'}</button></td></tr>)}
+          <td>{item.email}</td><td>{item.role === 'admin' ? (
+            <span className="status status-realizada" title="El rol de administrador no puede modificarse desde el panel"><ShieldCheck size={13} style={{ verticalAlign: 'middle', marginRight: 4 }}/> Administrador protegido</span>
+          ) : (
+            <select className="role-select" aria-label={`Rol de ${item.full_name}`} value={item.role} disabled={busyId === item.id} onChange={(e) => changeRole(item.id, e.target.value)}>
+              {Object.entries(roles).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          )}</td><td><span className={`status ${item.is_active ? 'status-realizada' : 'status-cancelada'}`}>{item.is_active ? 'Activo' : 'Inactivo'}</span></td>
+          <td>{item.role === 'admin' && item.is_active ? (
+            <span className="status status-realizada" title="Las cuentas administradoras no pueden desactivarse">Protegido</span>
+          ) : (
+            <button className={`button button-small ${item.is_active ? 'button-outline-danger' : 'button-primary'}`} disabled={busyId === item.id} onClick={() => toggleActive(item)}>{item.is_active ? 'Desactivar' : 'Activar'}</button>
+          )}</td></tr>)}
         {!users.length && <tr><td colSpan="5"><div className="empty-state">No hay usuarios para mostrar.</div></td></tr>}
       </tbody></table></div>
     </section>

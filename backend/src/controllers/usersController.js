@@ -1,6 +1,7 @@
 import { pool } from '../db/pool.js';
 import { HttpError } from '../utils/httpError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { assertRoleChangeAllowed, assertAccountStatusChangeAllowed } from '../utils/adminAccountPolicy.js';
 
 export const updateOwnProfile = asyncHandler(async (req, res) => {
   const fullName = String(req.body.full_name || '').trim();
@@ -43,22 +44,30 @@ async function assertNoActiveResponsibilities(client, userId) {
 export const changeUserRole = asyncHandler(async (req, res) => {
   const role = String(req.body?.role || '');
   if (!['admin', 'mentor', 'mentorado'].includes(role)) throw new HttpError(400, 'El rol indicado no es válido.');
-  if (req.params.id === req.user.id && role !== 'admin') throw new HttpError(400, 'No puedes retirar tu propio rol de administrador.');
   const client = await pool.connect();
   let user;
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const { rows } = await client.query(
+      'SELECT id, full_name, email, role, is_active FROM users WHERE id = $1 FOR UPDATE',
+      [req.params.id],
+    );
     const current = rows[0];
     if (!current) throw new HttpError(404, 'Usuario no encontrado.');
-    if (current.role !== role) await assertNoActiveResponsibilities(client, current.id);
-    const result = await client.query(
-      `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2
-       RETURNING id, full_name, email, role, is_active`, [role, req.params.id],
-    );
-    user = result.rows[0];
-    if (role === 'mentor') {
-      await client.query('INSERT INTO mentor_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [req.params.id]);
+    assertRoleChangeAllowed(req.user, current, role);
+    if (current.role === role) {
+      user = current;
+    } else {
+      await assertNoActiveResponsibilities(client, current.id);
+      const result = await client.query(
+        `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2
+         RETURNING id, full_name, email, role, is_active`,
+        [role, current.id],
+      );
+      user = result.rows[0];
+      if (role === 'mentor') {
+        await client.query('INSERT INTO mentor_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [current.id]);
+      }
     }
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
@@ -67,20 +76,29 @@ export const changeUserRole = asyncHandler(async (req, res) => {
 });
 
 export const setUserActive = asyncHandler(async (req, res) => {
-  if (req.params.id === req.user.id) throw new HttpError(400, 'No puedes desactivar tu propia cuenta.');
   if (typeof req.body?.is_active !== 'boolean') throw new HttpError(400, 'El estado activo debe ser verdadero o falso.');
   const client = await pool.connect();
   let user;
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
-    if (!rows[0]) throw new HttpError(404, 'Usuario no encontrado.');
-    if (rows[0].is_active && !req.body.is_active) await assertNoActiveResponsibilities(client, rows[0].id);
-    const result = await client.query(
-      `UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2
-       RETURNING id, full_name, email, role, is_active`, [req.body.is_active, req.params.id],
+    const { rows } = await client.query(
+      'SELECT id, full_name, email, role, is_active FROM users WHERE id = $1 FOR UPDATE',
+      [req.params.id],
     );
-    user = result.rows[0];
+    const current = rows[0];
+    if (!current) throw new HttpError(404, 'Usuario no encontrado.');
+    assertAccountStatusChangeAllowed(req.user, current, req.body.is_active);
+    if (current.is_active === req.body.is_active) {
+      user = current;
+    } else {
+      if (current.is_active) await assertNoActiveResponsibilities(client, current.id);
+      const result = await client.query(
+        `UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2
+         RETURNING id, full_name, email, role, is_active`,
+        [req.body.is_active, current.id],
+      );
+      user = result.rows[0];
+    }
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
