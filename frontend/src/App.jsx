@@ -5,7 +5,7 @@ import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
-import MentorsPage from './pages/MentorsPage';
+import TutoriasPage from './pages/TutoriasPage';
 import AvailabilityPage from './pages/AvailabilityPage';
 import AppointmentsPage from './pages/AppointmentsPage';
 import AppointmentDetailPage from './pages/AppointmentDetailPage';
@@ -24,7 +24,7 @@ export default function App() {
     <Route path="/restablecer" element={<ResetPasswordPage />} />
     <Route element={<ProtectedRoute />}><Route path="/app" element={<Layout />}>
       <Route index element={<DashboardPage />} />
-      <Route element={<ProtectedRoute roles={['mentorado']} />}><Route path="mentores" element={<MentorsPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['mentor']} />}><Route path="tutorias" element={<TutoriasPage />} /></Route>
       <Route element={<ProtectedRoute roles={['mentor']} />}><Route path="disponibilidad" element={<AvailabilityPage />} /></Route>
       <Route path="citas" element={<AppointmentsPage />} />
       <Route path="citas/:id" element={<AppointmentDetailPage />} />

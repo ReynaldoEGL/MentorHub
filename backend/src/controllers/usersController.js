@@ -23,28 +23,66 @@ export const listUsers = asyncHandler(async (req, res) => {
   res.json({ users: rows });
 });
 
+// No cambies roles ni desactives participantes mientras tengan tutorías futuras.
+// Esto evita que una asignación válida deje de poder consultarse por sus participantes.
+async function assertNoActiveResponsibilities(client, userId) {
+  const { rows } = await client.query(
+    `SELECT
+       EXISTS (SELECT 1 FROM appointments WHERE (mentor_id = $1 OR mentee_id = $1)
+         AND status IN ('solicitada', 'confirmada') AND end_at >= NOW()) AS appointments,
+       EXISTS (SELECT 1 FROM tutoring_offerings WHERE mentor_id = $1
+         AND status = 'abierta' AND start_at >= NOW()
+         AND NOT EXISTS (SELECT 1 FROM appointments WHERE offering_id = tutoring_offerings.id)) AS offers`,
+    [userId],
+  );
+  if (rows[0].appointments || rows[0].offers) {
+    throw new HttpError(409, 'Primero cancela o concluye las tutorías futuras y las ofertas sin asignar de esta cuenta.');
+  }
+}
+
 export const changeUserRole = asyncHandler(async (req, res) => {
-  const role = String(req.body.role || '');
+  const role = String(req.body?.role || '');
   if (!['admin', 'mentor', 'mentorado'].includes(role)) throw new HttpError(400, 'El rol indicado no es válido.');
   if (req.params.id === req.user.id && role !== 'admin') throw new HttpError(400, 'No puedes retirar tu propio rol de administrador.');
-  const { rows } = await pool.query(
-    `UPDATE users SET role = $1, updated_at = NOW()
-     WHERE id = $2 RETURNING id, full_name, email, role, is_active`,
-    [role, req.params.id],
-  );
-  if (!rows[0]) throw new HttpError(404, 'Usuario no encontrado.');
-  if (role === 'mentor') {
-    await pool.query('INSERT INTO mentor_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [req.params.id]);
-  }
-  res.json({ user: rows[0] });
+  const client = await pool.connect();
+  let user;
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const current = rows[0];
+    if (!current) throw new HttpError(404, 'Usuario no encontrado.');
+    if (current.role !== role) await assertNoActiveResponsibilities(client, current.id);
+    const result = await client.query(
+      `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2
+       RETURNING id, full_name, email, role, is_active`, [role, req.params.id],
+    );
+    user = result.rows[0];
+    if (role === 'mentor') {
+      await client.query('INSERT INTO mentor_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [req.params.id]);
+    }
+    await client.query('COMMIT');
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+  res.json({ user });
 });
 
 export const setUserActive = asyncHandler(async (req, res) => {
   if (req.params.id === req.user.id) throw new HttpError(400, 'No puedes desactivar tu propia cuenta.');
-  const { rows } = await pool.query(
-    'UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, full_name, email, role, is_active',
-    [Boolean(req.body.is_active), req.params.id],
-  );
-  if (!rows[0]) throw new HttpError(404, 'Usuario no encontrado.');
-  res.json({ user: rows[0] });
+  if (typeof req.body?.is_active !== 'boolean') throw new HttpError(400, 'El estado activo debe ser verdadero o falso.');
+  const client = await pool.connect();
+  let user;
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!rows[0]) throw new HttpError(404, 'Usuario no encontrado.');
+    if (rows[0].is_active && !req.body.is_active) await assertNoActiveResponsibilities(client, rows[0].id);
+    const result = await client.query(
+      `UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2
+       RETURNING id, full_name, email, role, is_active`, [req.body.is_active, req.params.id],
+    );
+    user = result.rows[0];
+    await client.query('COMMIT');
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+  res.json({ user });
 });

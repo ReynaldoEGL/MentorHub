@@ -2,12 +2,13 @@ import { pool } from '../db/pool.js';
 import { HttpError } from '../utils/httpError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { notifyUser } from '../services/notifications.js';
+import { canViewAppointment } from '../utils/accessRules.js';
 
 async function getAppointmentForUser(appointmentId, user) {
   const { rows } = await pool.query('SELECT * FROM appointments WHERE id = $1', [appointmentId]);
   const appointment = rows[0];
   if (!appointment) throw new HttpError(404, 'Mentoría no encontrada.');
-  if (user.role !== 'admin' && ![appointment.mentor_id, appointment.mentee_id].includes(user.id)) {
+  if (!canViewAppointment(user, appointment)) {
     throw new HttpError(403, 'No tienes acceso a los archivos de esta mentoría.');
   }
   return appointment;
@@ -37,7 +38,7 @@ export const createEvidence = asyncHandler(async (req, res) => {
     [appointment.id, req.user.id, description, file.originalName, file.storedName, file.mimeType, file.sizeBytes, file.filePath],
   );
   const recipient = req.user.id === appointment.mentor_id ? appointment.mentee_id : appointment.mentor_id;
-  await notifyUser(recipient, 'evidencia_cargada', `${req.user.full_name} agregó una evidencia a la mentoría "${appointment.topic}".`, 'evidence', rows[0].id, 'Nueva evidencia en MentorHub');
+  await notifyUser(recipient, 'evidencia_cargada', `${req.user.full_name} agregó una evidencia a la mentoría "${appointment.topic}".`, 'appointment', appointment.id, 'Nueva evidencia en MentorHub');
   res.status(201).json({ evidence: rows[0] });
 });
 
@@ -71,7 +72,7 @@ export const reviewEvidence = asyncHandler(async (req, res) => {
      WHERE id = $3 RETURNING id, review_status, review_comment, reviewed_at`,
     [status, comment, req.params.id],
   );
-  await notifyUser(evidence.uploaded_by, 'evidencia_revisada', `Tu evidencia de "${evidence.topic}" fue ${status === 'aprobada' ? 'aprobada' : 'marcada para corrección'}. ${comment}`, 'evidence', evidence.id, 'Evidencia revisada');
+  await notifyUser(evidence.uploaded_by, 'evidencia_revisada', `Tu evidencia de "${evidence.topic}" fue ${status === 'aprobada' ? 'aprobada' : 'marcada para corrección'}. ${comment}`, 'appointment', evidence.appointment_id, 'Evidencia revisada');
   res.json({ evidence: result.rows[0] });
 });
 
@@ -83,7 +84,7 @@ export const downloadEvidence = asyncHandler(async (req, res) => {
   );
   const item = rows[0];
   if (!item) throw new HttpError(404, 'Archivo no encontrado.');
-  if (req.user.role !== 'admin' && ![item.mentor_id, item.mentee_id].includes(req.user.id)) throw new HttpError(403, 'No tienes permiso para descargar este archivo.');
+  if (!canViewAppointment(req.user, item)) throw new HttpError(403, 'No tienes permiso para descargar este archivo.');
   res.download(item.file_path, item.original_name);
 });
 
@@ -94,6 +95,7 @@ export const createDocumentRequest = asyncHandler(async (req, res) => {
   const description = String(req.body.description || '').trim().slice(0, 1500);
   const dueAt = req.body.due_at;
   if (title.length < 3 || title.length > 180 || !dueAt || new Date(dueAt) <= new Date()) throw new HttpError(400, 'Indica un título y una fecha límite futura.');
+  if (!['confirmada', 'realizada'].includes(appointment.status)) throw new HttpError(409, 'La tutoría debe estar confirmada o realizada para solicitar documentos.');
   const recipientId = req.user.id === appointment.mentor_id ? appointment.mentee_id : appointment.mentor_id;
   const { rows } = await pool.query(
     `INSERT INTO document_requests (appointment_id, requester_id, recipient_id, title, description, due_at)

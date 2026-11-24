@@ -6,5 +6,5 @@ router.get('/mia', requireRole('mentor'), listMyAvailability);
 router.post('/', requireRole('mentor'), createAvailability);
 router.put('/:id', requireRole('mentor'), updateAvailability);
 router.delete('/:id', requireRole('mentor'), deleteAvailability);
-router.get('/mentor/:mentorId', listMentorAvailability);
+router.get('/mentor/:mentorId', requireRole('admin'), listMentorAvailability);
 export default router;

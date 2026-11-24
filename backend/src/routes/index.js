@@ -10,6 +10,7 @@ import appointmentRoutes from './appointmentRoutes.js';
 import fileRoutes from './fileRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
 import adminRoutes from './adminRoutes.js';
+import tutoringRoutes from './tutoringRoutes.js';
 
 const router = Router();
 
@@ -19,11 +20,12 @@ router.post('/auth/forgot-password', forgotPassword);
 router.post('/auth/reset-password', resetPassword);
 router.get('/auth/me', authenticate, me);
 router.patch('/users/me', authenticate, updateOwnProfile);
-router.get('/mentores', authenticate, listMentors);
+router.get('/mentores', authenticate, requireRole('admin'), listMentors);
 router.get('/mentores/me/perfil', authenticate, requireRole('mentor'), getOwnMentorProfile);
-router.get('/mentores/:id', authenticate, getMentor);
+router.get('/mentores/:id', authenticate, requireRole('admin'), getMentor);
 router.put('/mentores/me/perfil', authenticate, requireRole('mentor'), updateMentorProfile);
 router.use('/disponibilidad', authenticate, availabilityRoutes);
+router.use('/tutorias', authenticate, tutoringRoutes);
 router.use('/citas', authenticate, appointmentRoutes);
 router.use('/', authenticate, fileRoutes);
 router.use('/notificaciones', authenticate, notificationRoutes);

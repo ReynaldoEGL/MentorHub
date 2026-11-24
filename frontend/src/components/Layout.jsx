@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Bell, CalendarDays, GraduationCap, LayoutDashboard, LogOut, Search, Settings, UserRound } from 'lucide-react';
+import { Bell, CalendarDays, GraduationCap, LayoutDashboard, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 
@@ -17,9 +17,9 @@ export default function Layout() {
   }, []);
   const links = [
     { to: '/app', label: 'Resumen', icon: LayoutDashboard, end: true },
-    ...(user?.role === 'mentorado' ? [{ to: '/app/mentores', label: 'Buscar mentores', icon: Search }] : []),
+    ...(user?.role === 'mentor' ? [{ to: '/app/tutorias', label: 'Mis tutorías ofertadas', icon: GraduationCap }] : []),
     ...(user?.role === 'mentor' ? [{ to: '/app/disponibilidad', label: 'Mi disponibilidad', icon: CalendarDays }] : []),
-    { to: '/app/citas', label: 'Mis mentorías', icon: GraduationCap },
+    { to: '/app/citas', label: user?.role === 'admin' ? 'Todas las tutorías' : 'Mis tutorías asignadas', icon: GraduationCap },
     { to: '/app/documentos', label: 'Documentos', icon: Bell },
     ...(user?.role === 'admin' ? [{ to: '/app/admin', label: 'Administración', icon: Settings }] : []),
   ];
