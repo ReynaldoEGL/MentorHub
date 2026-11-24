@@ -25,6 +25,7 @@ function fileMetadata(file) {
 }
 
 export const createEvidence = asyncHandler(async (req, res) => {
+  if (!['mentor', 'mentorado'].includes(req.user.role)) throw new HttpError(403, 'Solo mentor y mentorado pueden agregar evidencias.');
   const appointment = await getAppointmentForUser(req.params.id, req.user);
   if (!['confirmada', 'realizada'].includes(appointment.status)) throw new HttpError(400, 'Solo puedes subir evidencias en citas confirmadas o realizadas.');
   const file = fileMetadata(req.file);
@@ -87,6 +88,7 @@ export const downloadEvidence = asyncHandler(async (req, res) => {
 });
 
 export const createDocumentRequest = asyncHandler(async (req, res) => {
+  if (!['mentor', 'mentorado'].includes(req.user.role)) throw new HttpError(403, 'Solo mentor y mentorado pueden solicitar documentos.');
   const appointment = await getAppointmentForUser(req.params.id, req.user);
   const title = String(req.body.title || '').trim();
   const description = String(req.body.description || '').trim().slice(0, 1500);

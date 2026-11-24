@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { HttpError } from '../utils/httpError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { notifyUser } from '../services/notifications.js';
+import { canCancelAppointment, canTransitionAppointment } from '../utils/appointmentRules.js';
 
 function localParts(value) {
   const date = new Date(value);
@@ -77,6 +78,7 @@ export const getAppointment = asyncHandler(async (req, res) => {
 });
 
 export const createAppointment = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'mentorado') throw new HttpError(403, 'Solo los mentorados pueden solicitar una cita.');
   const mentorId = String(req.body.mentor_id || '');
   const startAt = req.body.start_at;
   const endAt = req.body.end_at;
@@ -118,15 +120,12 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
   if (!appointment) throw new HttpError(404, 'Mentoría no encontrada.');
   if (nextStatus === 'cancelada') {
     if (![appointment.mentor_id, appointment.mentee_id].includes(req.user.id) && req.user.role !== 'admin') throw new HttpError(403, 'No puedes cancelar esta cita.');
-    if (new Date(appointment.start_at).getTime() - Date.now() < 24 * 60 * 60 * 1000) throw new HttpError(400, 'La cancelación debe realizarse con al menos 24 horas de anticipación.');
+    if (!canTransitionAppointment(appointment.status, 'cancelada')) throw new HttpError(400, 'Esta mentoría ya no puede cancelarse.');
+    if (!canCancelAppointment(appointment.start_at, new Date(), env.cancellationMinHours)) throw new HttpError(400, `La cancelación debe realizarse con al menos ${env.cancellationMinHours} horas de anticipación.`);
   } else {
     if (req.user.role !== 'mentor' && req.user.role !== 'admin') throw new HttpError(403, 'Solo el mentor puede actualizar el estado de la cita.');
     if (req.user.role !== 'admin' && appointment.mentor_id !== req.user.id) throw new HttpError(403, 'Esta mentoría no te pertenece.');
-    const allowed = {
-      solicitada: ['confirmada', 'rechazada'],
-      confirmada: ['realizada'],
-    };
-    if (!(allowed[appointment.status] || []).includes(nextStatus)) throw new HttpError(400, 'La transición de estado no está permitida.');
+    if (!canTransitionAppointment(appointment.status, nextStatus)) throw new HttpError(400, 'La transición de estado no está permitida.');
   }
   if (!['solicitada', 'confirmada', 'rechazada', 'cancelada', 'realizada'].includes(nextStatus)) throw new HttpError(400, 'Estado no válido.');
   const notes = req.body.notes === undefined ? appointment.notes : String(req.body.notes).slice(0, 5000);
@@ -145,6 +144,7 @@ export const rescheduleAppointment = asyncHandler(async (req, res) => {
   if (!appointment) throw new HttpError(404, 'Mentoría no encontrada.');
   if (![appointment.mentor_id, appointment.mentee_id].includes(req.user.id) || req.user.role === 'admin') throw new HttpError(403, 'Solo las personas involucradas pueden reprogramar.');
   if (!['solicitada', 'confirmada'].includes(appointment.status)) throw new HttpError(400, 'Esta mentoría ya no puede reprogramarse.');
+  if (!canCancelAppointment(appointment.start_at, new Date(), env.cancellationMinHours)) throw new HttpError(400, `La reprogramación debe realizarse con al menos ${env.cancellationMinHours} horas de anticipación.`);
   const client = await pool.connect();
   let updated;
   try {
@@ -164,4 +164,15 @@ export const rescheduleAppointment = asyncHandler(async (req, res) => {
   const recipient = req.user.id === appointment.mentor_id ? appointment.mentee_id : appointment.mentor_id;
   await notifyUser(recipient, 'cita_reprogramada', `Se propuso un nuevo horario para la mentoría "${appointment.topic}". Debe confirmarse nuevamente.`, 'appointment', appointment.id, 'Mentoría reprogramada');
   res.json({ appointment: updated });
+});
+
+
+export const updateAppointmentNotes = asyncHandler(async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM appointments WHERE id = $1', [req.params.id]);
+  const appointment = rows[0];
+  if (!appointment) throw new HttpError(404, 'Mentoría no encontrada.');
+  if (req.user.role !== 'mentor' || appointment.mentor_id !== req.user.id) throw new HttpError(403, 'Solo el mentor de la cita puede registrar notas.');
+  const notes = String(req.body.notes || '').trim().slice(0, 5000);
+  const result = await pool.query('UPDATE appointments SET notes = $1, updated_at = NOW() WHERE id = $2 RETURNING notes', [notes, req.params.id]);
+  res.json({ notes: result.rows[0].notes });
 });

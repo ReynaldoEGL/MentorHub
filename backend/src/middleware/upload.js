@@ -23,7 +23,8 @@ export const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   fileFilter(req, file, callback) {
-    if (!allowed.has(file.mimetype)) return callback(new HttpError(400, 'Tipo de archivo no permitido. Usa PDF, JPG, PNG o DOCX.'));
+    const extensions = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.docx']);
+    if (!allowed.has(file.mimetype) || !extensions.has(extname(file.originalname).toLowerCase())) return callback(new HttpError(400, 'Tipo de archivo no permitido. Usa PDF, JPG, PNG o DOCX.'));
     callback(null, true);
   },
 });

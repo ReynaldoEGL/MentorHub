@@ -10,6 +10,7 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   frontendUrls: (process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map((v) => v.trim()),
   timezone: process.env.APP_TIMEZONE || 'America/Mexico_City',
+  cancellationMinHours: Number(process.env.CANCELLATION_MIN_HOURS || 24),
   uploadDir: process.env.UPLOAD_DIR || './uploads',
 };
 

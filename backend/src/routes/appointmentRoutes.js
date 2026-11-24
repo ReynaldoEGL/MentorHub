@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { createAppointment, getAppointment, listAppointments, rescheduleAppointment, updateAppointmentStatus } from '../controllers/appointmentsController.js';
+import { createAppointment, getAppointment, listAppointments, rescheduleAppointment, updateAppointmentStatus, updateAppointmentNotes } from '../controllers/appointmentsController.js';
 const router = Router();
 router.get('/', listAppointments);
 router.post('/', createAppointment);
 router.get('/:id', getAppointment);
 router.patch('/:id/estado', updateAppointmentStatus);
 router.patch('/:id/reprogramar', rescheduleAppointment);
+router.patch('/:id/notas', updateAppointmentNotes);
 export default router;

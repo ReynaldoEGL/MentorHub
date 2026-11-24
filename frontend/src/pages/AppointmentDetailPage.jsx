@@ -19,12 +19,15 @@ export default function AppointmentDetailPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [reschedule, setReschedule] = useState({ start: '', end: '' });
 
   const load = async () => {
     const [appointmentResult, evidenceResult, requestResult] = await Promise.all([
       api.get(`/citas/${id}`), api.get(`/citas/${id}/evidencias`), api.get('/solicitudes-documentos'),
     ]);
     setAppointment(appointmentResult.data.appointment);
+    setNotes(appointmentResult.data.appointment.notes || '');
     setEvidences(evidenceResult.data.evidences);
     setRequests(requestResult.data.requests.filter((item) => item.appointment_id === id));
   };
@@ -44,6 +47,22 @@ export default function AppointmentDetailPage() {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
     try { await api.post(`/citas/${id}/solicitudes-documentos`, { ...documentForm, due_at: new Date(documentForm.due_at).toISOString() }); setDocumentForm({ title: '', description: '', due_at: '' }); setMessage('Solicitud de documento enviada.'); await load(); }
     catch (err) { setError(getApiError(err)); }
+    finally { setBusy(false); }
+  };
+
+  const saveNotes = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await api.patch(`/citas/${id}/notas`, { notes }); setMessage('Notas guardadas.'); await load(); }
+    catch (err) { setError(getApiError(err)); }
+    finally { setBusy(false); }
+  };
+
+  const rescheduleAppointment = async (event) => {
+    event.preventDefault(); setBusy(true); setError(''); setMessage('');
+    try {
+      await api.patch(`/citas/${id}/reprogramar`, { start_at: new Date(reschedule.start).toISOString(), end_at: new Date(reschedule.end).toISOString() });
+      setMessage('Se envió la propuesta de nuevo horario. La cita volvió a estado solicitada.'); await load();
+    } catch (err) { setError(getApiError(err)); }
     finally { setBusy(false); }
   };
 
@@ -69,7 +88,7 @@ export default function AppointmentDetailPage() {
     {error && <div className="form-error detail-alert">{error}</div>}{message && <div className="form-success detail-alert">{message}</div>}
     <div className="two-column-layout detail-layout">
       <div className="detail-column">
-        <section className="panel"><div className="panel-title"><h2>Información de la mentoría</h2></div><div className="detail-grid"><div><span>Mentor</span><strong>{appointment.mentor_name}</strong></div><div><span>Mentorado</span><strong>{appointment.mentee_name}</strong></div><div><span>Inicio</span><strong>{prettyDate(appointment.start_at)}</strong></div><div><span>Fin</span><strong>{new Date(appointment.end_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong></div><div className="detail-wide"><span>Lugar o enlace</span><strong>{appointment.location_or_link || 'Por definir'}</strong></div><div className="detail-wide"><span>Notas o acuerdos</span><p>{appointment.notes || 'El mentor puede registrar aquí los acuerdos de la sesión.'}</p></div></div></section>
+        <section className="panel"><div className="panel-title"><h2>Información de la mentoría</h2></div><div className="detail-grid"><div><span>Mentor</span><strong>{appointment.mentor_name}</strong></div><div><span>Mentorado</span><strong>{appointment.mentee_name}</strong></div><div><span>Inicio</span><strong>{prettyDate(appointment.start_at)}</strong></div><div><span>Fin</span><strong>{new Date(appointment.end_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</strong></div><div className="detail-wide"><span>Lugar o enlace</span><strong>{appointment.location_or_link || 'Por definir'}</strong></div><div className="detail-wide"><span>Notas o acuerdos</span><p>{appointment.notes || 'El mentor puede registrar aquí los acuerdos de la sesión.'}</p></div></div>{user?.role === 'mentor' && <form className="detail-form" onSubmit={saveNotes}><label>Registrar notas y acuerdos<textarea rows="3" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Acuerdos, temas revisados y siguientes pasos"/></label><button className="button button-primary" disabled={busy}>Guardar notas</button></form>}{['mentor','mentorado'].includes(user?.role) && ['solicitada','confirmada'].includes(appointment.status) && <form className="detail-form" onSubmit={rescheduleAppointment}><strong>Proponer otro horario</strong><div className="form-grid"><label>Nuevo inicio<input type="datetime-local" value={reschedule.start} onChange={(e) => setReschedule({ ...reschedule, start: e.target.value })} required/></label><label>Nuevo fin<input type="datetime-local" value={reschedule.end} onChange={(e) => setReschedule({ ...reschedule, end: e.target.value })} required/></label></div><span className="hint">La reprogramación requiere al menos 24 horas de anticipación y confirmación del mentor.</span><button className="button button-outline" disabled={busy}>Enviar propuesta</button></form>}</section>
         <section className="panel"><div className="panel-title"><h2><Paperclip size={17}/> Evidencias de la sesión</h2><span className="count-pill">{evidences.length}</span></div>
           <div className="file-list">{evidences.map((item) => <div className="file-row" key={item.id}><div className="file-icon"><FileText size={17}/></div><div className="file-copy"><strong>{item.original_name}</strong><span>{item.uploaded_by_name} · {item.description || 'Sin descripción'}</span><span className={`status status-${item.review_status === 'aprobada' ? 'realizada' : item.review_status === 'correccion' ? 'rechazada' : 'solicitada'}`}>{item.review_status}</span>{item.review_comment && <em>{item.review_comment}</em>}</div><button className="icon-button" onClick={() => download(`/archivos/evidencias/${item.id}`, item.original_name)} title="Descargar"><Download size={15}/></button>{user?.role === 'mentor' && item.uploaded_by !== user.id && item.review_status === 'pendiente' && <><button className="icon-button success" onClick={() => reviewEvidence(item.id, 'aprobada')} title="Aprobar"><Check size={15}/></button><button className="icon-button danger" onClick={() => reviewEvidence(item.id, 'correccion')} title="Solicitar corrección">!</button></>}</div>)}{!evidences.length && <p className="empty-state">Aún no se han agregado evidencias.</p>}</div>
           {canUpload && <form className="inline-upload" onSubmit={uploadEvidence}><label>Agregar evidencia<input type="file" accept=".pdf,.jpg,.jpeg,.png,.docx" onChange={(e) => setFile(e.target.files?.[0] || null)} required/></label><label>Descripción<input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe brevemente el archivo"/></label><button className="button button-primary" disabled={busy}><Upload size={15}/> Cargar</button><span className="hint">PDF, JPG, PNG o DOCX · Máximo 10 MB</span></form>}

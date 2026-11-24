@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarPlus, Clock3, Trash2 } from 'lucide-react';
+import { CalendarPlus, Clock3, Pencil, Trash2 } from 'lucide-react';
 import api, { getApiError } from '../api/client';
 
 const dayLabels = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -11,8 +11,15 @@ export default function AvailabilityPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [profile, setProfile] = useState({ areas: '', description: '' });
+  const [profileMessage, setProfileMessage] = useState('');
+  const [editingId, setEditingId] = useState(null);
 
-  const load = async () => { const { data } = await api.get('/disponibilidad/mia'); setItems(data.availabilities); };
+  const load = async () => {
+    const [availabilityResult, profileResult] = await Promise.all([api.get('/disponibilidad/mia'), api.get('/mentores/me/perfil')]);
+    setItems(availabilityResult.data.availabilities);
+    setProfile({ areas: (profileResult.data.profile.areas || []).join(', '), description: profileResult.data.profile.description || '' });
+  };
   useEffect(() => { load().catch((err) => setError(getApiError(err))); }, []);
 
   const submit = async (event) => {
@@ -20,22 +27,36 @@ export default function AvailabilityPage() {
     try {
       const body = { start_time: form.start_time, end_time: form.end_time, active_from: form.active_from || null, active_until: form.active_until || null };
       if (form.kind === 'weekly') body.weekday = Number(form.weekday); else body.specific_date = form.specific_date;
-      await api.post('/disponibilidad', body);
-      setMessage('Bloque de disponibilidad agregado.'); setForm(blank); await load();
+      if (editingId) await api.put(`/disponibilidad/${editingId}`, body);
+      else await api.post('/disponibilidad', body);
+      setMessage(editingId ? 'Disponibilidad actualizada.' : 'Bloque de disponibilidad agregado.'); setEditingId(null); setForm(blank); await load();
     } catch (err) { setError(getApiError(err)); }
     finally { setBusy(false); }
   };
 
+  const saveProfile = async (event) => {
+    event.preventDefault(); setBusy(true); setError(''); setProfileMessage('');
+    try { await api.put('/mentores/me/perfil', { areas: profile.areas, description: profile.description }); setProfileMessage('Perfil actualizado.'); }
+    catch (err) { setError(getApiError(err)); }
+    finally { setBusy(false); }
+  };
+
+  const editItem = (item) => {
+    setEditingId(item.id);
+    setForm({ kind: item.specific_date ? 'date' : 'weekly', weekday: String(item.weekday ?? 1), specific_date: item.specific_date || '', start_time: item.start_time, end_time: item.end_time, active_from: item.active_from || '', active_until: item.active_until || '' });
+    setMessage(''); setError('');
+  };
+
   const remove = async (id) => {
     if (!window.confirm('¿Eliminar este bloque de disponibilidad?')) return;
-    try { await api.delete(`/disponibilidad/${id}`); await load(); }
+    try { await api.delete(`/disponibilidad/${id}`); if (editingId === id) { setEditingId(null); setForm(blank); } await load(); }
     catch (err) { setError(getApiError(err)); }
   };
 
   return <>
     <div className="page-heading"><div><span className="eyebrow">AGENDA DEL MENTOR</span><h1>Mi disponibilidad</h1><p>Publica horarios recurrentes o fechas específicas para que los mentorados puedan solicitar sesiones.</p></div></div>
     <div className="two-column-layout">
-      <section className="panel form-panel"><div className="panel-title"><h2><CalendarPlus size={18}/> Agregar horario</h2></div>
+      <section className="panel form-panel"><div className="panel-title"><h2><CalendarPlus size={18}/> {editingId ? 'Editar horario' : 'Agregar horario'}</h2></div>
         <form className="form-grid" onSubmit={submit}>
           <label className="field-full">Tipo de disponibilidad<select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}><option value="weekly">Recurrente semanal</option><option value="date">Fecha específica</option></select></label>
           {form.kind === 'weekly' ? <label className="field-full">Día de la semana<select value={form.weekday} onChange={(e) => setForm({ ...form, weekday: e.target.value })}>{dayLabels.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label> : <label className="field-full">Fecha<input type="date" value={form.specific_date} onChange={(e) => setForm({ ...form, specific_date: e.target.value })} required/></label>}
@@ -43,12 +64,13 @@ export default function AvailabilityPage() {
           <label>Hora de fin<input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} required/></label>
           {form.kind === 'weekly' && <><label>Vigente desde (opcional)<input type="date" value={form.active_from} onChange={(e) => setForm({ ...form, active_from: e.target.value })}/></label><label>Vigente hasta (opcional)<input type="date" value={form.active_until} onChange={(e) => setForm({ ...form, active_until: e.target.value })}/></label></>}
           {message && <div className="form-success field-full">{message}</div>}{error && <div className="form-error field-full">{error}</div>}
-          <div className="field-full"><button className="button button-primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar disponibilidad'}</button></div>
+          <div className="field-full"><button className="button button-primary" disabled={busy}>{busy ? 'Guardando…' : editingId ? 'Actualizar disponibilidad' : 'Guardar disponibilidad'}</button>{editingId && <button type="button" className="button button-outline" onClick={() => { setEditingId(null); setForm(blank); }}>Cancelar edición</button>}</div>
         </form>
       </section>
       <section className="panel list-panel"><div className="panel-title"><h2>Horarios publicados</h2><span className="count-pill">{items.length}</span></div>
-        <div className="schedule-list">{items.map((item) => <div className="schedule-row" key={item.id}><div className="schedule-icon"><Clock3 size={17}/></div><div className="schedule-copy"><strong>{item.specific_date || `${dayLabels[item.weekday]} · cada semana`}</strong><span>{item.start_time} – {item.end_time}{item.active_until ? ` · hasta ${item.active_until}` : ''}</span></div><button className="icon-button danger" onClick={() => remove(item.id)} title="Eliminar"><Trash2 size={16}/></button></div>)}{!items.length && <p className="empty-state">Todavía no publicas disponibilidad.</p>}</div>
+        <div className="schedule-list">{items.map((item) => <div className="schedule-row" key={item.id}><div className="schedule-icon"><Clock3 size={17}/></div><div className="schedule-copy"><strong>{item.specific_date || `${dayLabels[item.weekday]} · cada semana`}</strong><span>{item.start_time} – {item.end_time}{item.active_until ? ` · hasta ${item.active_until}` : ''}</span></div><button className="icon-button" onClick={() => editItem(item)} title="Editar" aria-label="Editar disponibilidad"><Pencil size={16}/></button><button className="icon-button danger" onClick={() => remove(item.id)} title="Eliminar"><Trash2 size={16}/></button></div>)}{!items.length && <p className="empty-state">Todavía no publicas disponibilidad.</p>}</div>
       </section>
     </div>
+    <section className="panel mentor-settings-panel"><div className="panel-title"><h2>Mi perfil de mentor</h2></div><form className="form-grid" onSubmit={saveProfile}><label className="field-full">Áreas o materias (separadas por comas)<input value={profile.areas} onChange={(e) => setProfile({ ...profile, areas: e.target.value })} placeholder="Matemáticas, Programación, Física"/></label><label className="field-full">Descripción<textarea rows="3" value={profile.description} onChange={(e) => setProfile({ ...profile, description: e.target.value })} placeholder="Describe tu experiencia y el tipo de acompañamiento que ofreces"/></label>{profileMessage && <div className="form-success field-full">{profileMessage}</div>}<div className="field-full"><button className="button button-primary" disabled={busy}>Guardar perfil</button></div></form></section>
   </>;
 }

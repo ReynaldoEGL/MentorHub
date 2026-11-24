@@ -1,10 +1,12 @@
 import app from './app.js';
 import { env } from './config/env.js';
 import { pool } from './db/pool.js';
+import { startReminderJobs } from './services/reminders.js';
 
 try {
   await pool.query('SELECT 1');
   const server = app.listen(env.port, () => console.log(`MentorHub API escuchando en el puerto ${env.port}`));
+  startReminderJobs();
 
   const shutdown = async () => {
     server.close(async () => {

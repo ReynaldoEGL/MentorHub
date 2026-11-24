@@ -41,3 +41,12 @@ export const updateMentorProfile = asyncHandler(async (req, res) => {
   );
   res.json({ profile: rows[0] });
 });
+
+
+export const getOwnMentorProfile = asyncHandler(async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT user_id, areas, description FROM mentor_profiles WHERE user_id = $1',
+    [req.user.id],
+  );
+  res.json({ profile: rows[0] || { user_id: req.user.id, areas: [], description: '' } });
+});

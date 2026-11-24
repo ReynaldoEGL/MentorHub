@@ -42,6 +42,7 @@ export const createAvailability = asyncHandler(async (req, res) => {
   if (!validTime(startTime) || !validTime(endTime) || startTime >= endTime) throw new HttpError(400, 'El horario debe tener inicio y fin válidos.');
   if (activeFrom && !/^\d{4}-\d{2}-\d{2}$/.test(activeFrom)) throw new HttpError(400, 'La fecha de inicio de vigencia no es válida.');
   if (activeUntil && !/^\d{4}-\d{2}-\d{2}$/.test(activeUntil)) throw new HttpError(400, 'La fecha de fin de vigencia no es válida.');
+  if (activeFrom && activeUntil && activeUntil < activeFrom) throw new HttpError(400, 'La fecha final de vigencia no puede ser anterior a la inicial.');
   const { rows } = await pool.query(
     `INSERT INTO availabilities (mentor_id, weekday, specific_date, start_time, end_time, active_from, active_until)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -56,4 +57,27 @@ export const deleteAvailability = asyncHandler(async (req, res) => {
   const { rowCount } = await pool.query('DELETE FROM availabilities WHERE id = $1 AND mentor_id = $2', [req.params.id, req.user.id]);
   if (!rowCount) throw new HttpError(404, 'Bloque de disponibilidad no encontrado.');
   res.json({ message: 'Disponibilidad eliminada.' });
+});
+
+export const updateAvailability = asyncHandler(async (req, res) => {
+  const { weekday, specific_date: specificDate, start_time: startTime, end_time: endTime, active_from: activeFrom, active_until: activeUntil } = req.body;
+  const hasWeekday = weekday !== undefined && weekday !== null && weekday !== '';
+  const hasDate = Boolean(specificDate);
+  if (hasWeekday === hasDate) throw new HttpError(400, 'Selecciona un día recurrente o una fecha específica, no ambos.');
+  if (hasWeekday && (!Number.isInteger(Number(weekday)) || Number(weekday) < 0 || Number(weekday) > 6)) throw new HttpError(400, 'El día de la semana no es válido.');
+  if (hasDate && !/^\d{4}-\d{2}-\d{2}$/.test(specificDate)) throw new HttpError(400, 'La fecha específica no es válida.');
+  if (!validTime(startTime) || !validTime(endTime) || startTime >= endTime) throw new HttpError(400, 'El horario debe tener inicio y fin válidos.');
+  if (activeFrom && !/^\d{4}-\d{2}-\d{2}$/.test(activeFrom)) throw new HttpError(400, 'La fecha de inicio de vigencia no es válida.');
+  if (activeUntil && !/^\d{4}-\d{2}-\d{2}$/.test(activeUntil)) throw new HttpError(400, 'La fecha de fin de vigencia no es válida.');
+  if (activeFrom && activeUntil && activeUntil < activeFrom) throw new HttpError(400, 'La fecha final de vigencia no puede ser anterior a la inicial.');
+  const { rows } = await pool.query(
+    `UPDATE availabilities SET weekday = $1, specific_date = $2, start_time = $3, end_time = $4,
+       active_from = $5, active_until = $6
+     WHERE id = $7 AND mentor_id = $8
+     RETURNING id, weekday, specific_date, to_char(start_time, 'HH24:MI') AS start_time,
+       to_char(end_time, 'HH24:MI') AS end_time, active_from, active_until`,
+    [hasWeekday ? Number(weekday) : null, hasDate ? specificDate : null, startTime, endTime, activeFrom || null, activeUntil || null, req.params.id, req.user.id],
+  );
+  if (!rows[0]) throw new HttpError(404, 'Bloque de disponibilidad no encontrado.');
+  res.json({ availability: rows[0] });
 });

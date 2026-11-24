@@ -17,6 +17,7 @@ export default function AppointmentsPage() {
   useEffect(() => { load().catch((err) => setError(getApiError(err))); }, []);
 
   const updateStatus = async (id, status) => {
+    if (status === 'cancelada' && !window.confirm('¿Confirmas que deseas cancelar esta mentoría?')) return;
     setError('');
     try { await api.patch(`/citas/${id}/estado`, { status }); await load(); }
     catch (err) { setError(getApiError(err)); }
